@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models/documents/attribute.dart';
 import 'controller.dart';
+import 'toolbar/arrow_indicated_button_list.dart';
 import 'toolbar/clear_format_button.dart';
 import 'toolbar/color_button.dart';
 import 'toolbar/history_button.dart';
@@ -39,10 +40,11 @@ const double kDefaultIconSize = 18;
 // The factor of how much larger the button is in relation to the icon.
 const double kIconButtonFactor = 1.77;
 
-class QuillToolbar extends StatefulWidget implements PreferredSizeWidget {
+class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
   const QuillToolbar({
     required this.children,
     this.toolBarHeight = 36,
+    this.color,
     Key? key,
   }) : super(key: key);
 
@@ -305,32 +307,21 @@ class QuillToolbar extends StatefulWidget implements PreferredSizeWidget {
   final List<Widget> children;
   final double toolBarHeight;
 
-  @override
-  _QuillToolbarState createState() => _QuillToolbarState();
+  /// The color of the toolbar.
+  ///
+  /// Defaults to [ThemeData.canvasColor] of the current [Theme] if no color
+  /// is given.
+  final Color? color;
 
   @override
   Size get preferredSize => Size.fromHeight(toolBarHeight);
-}
 
-class _QuillToolbarState extends State<QuillToolbar> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      constraints: BoxConstraints.tightFor(height: widget.preferredSize.height),
-      color: Theme.of(context).canvasColor,
-      child: CustomScrollView(
-        scrollDirection: Axis.horizontal,
-        slivers: [
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: widget.children,
-            ),
-          ),
-        ],
-      ),
+      constraints: BoxConstraints.tightFor(height: preferredSize.height),
+      color: color ?? Theme.of(context).canvasColor,
+      child: ArrowIndicatedButtonList(buttons: children),
     );
   }
 }
