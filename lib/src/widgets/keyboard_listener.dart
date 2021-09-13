@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 
 enum InputShortcut { CUT, COPY, PASTE, SELECT_ALL }
 
@@ -8,8 +9,8 @@ typedef CursorMoveCallback = void Function(
 typedef InputShortcutCallback = void Function(InputShortcut? shortcut);
 typedef OnDeleteCallback = void Function(bool forward);
 
-class QuillKeyboardListener {
-  QuillKeyboardListener(this.onCursorMove, this.onShortcut, this.onDelete);
+class KeyboardEventHandler {
+  KeyboardEventHandler(this.onCursorMove, this.onShortcut, this.onDelete);
 
   final CursorMoveCallback onCursorMove;
   final InputShortcutCallback onShortcut;
@@ -62,44 +63,38 @@ class QuillKeyboardListener {
     LogicalKeyboardKey.keyA: InputShortcut.SELECT_ALL,
   };
 
-  bool handleRawKeyEvent(RawKeyEvent event) {
+  KeyEventResult handleRawKeyEvent(RawKeyEvent event) {
     if (kIsWeb) {
       // On web platform, we ignore the key because it's already processed.
-      return false;
+      return KeyEventResult.ignored;
     }
 
     if (event is! RawKeyDownEvent) {
-      return false;
+      return KeyEventResult.ignored;
     }
 
-    final keysPressed =
-        LogicalKeyboardKey.collapseSynonyms(RawKeyboard.instance.keysPressed);
+    final keysPressed = LogicalKeyboardKey.collapseSynonyms(RawKeyboard.instance.keysPressed);
     final key = event.logicalKey;
     final isMacOS = event.data is RawKeyEventDataMacOs;
     if (!_nonModifierKeys.contains(key) ||
-        keysPressed
-                .difference(isMacOS ? _macOsModifierKeys : _modifierKeys)
-                .length >
-            1 ||
+        keysPressed.difference(isMacOS ? _macOsModifierKeys : _modifierKeys).length > 1 ||
         keysPressed.difference(_interestingKeys).isNotEmpty) {
-      return false;
+      return KeyEventResult.ignored;
     }
 
+    final isShortcutModifierPressed = isMacOS ? event.isMetaPressed : event.isControlPressed;
     if (_moveKeys.contains(key)) {
-      onCursorMove(
-          key,
-          isMacOS ? event.isAltPressed : event.isControlPressed,
-          isMacOS ? event.isMetaPressed : event.isAltPressed,
-          event.isShiftPressed);
-    } else if (isMacOS
-        ? event.isMetaPressed
-        : event.isControlPressed && _shortcutKeys.contains(key)) {
+      onCursorMove(key, isMacOS ? event.isAltPressed : event.isControlPressed,
+          isMacOS ? event.isMetaPressed : event.isAltPressed, event.isShiftPressed);
+    } else if (isShortcutModifierPressed && _shortcutKeys.contains(key)) {
       onShortcut(_keyToShortcut[key]);
     } else if (key == LogicalKeyboardKey.delete) {
       onDelete(true);
     } else if (key == LogicalKeyboardKey.backspace) {
       onDelete(false);
+    } else {
+      return KeyEventResult.ignored;
     }
-    return false;
+    return KeyEventResult.handled;
   }
 }

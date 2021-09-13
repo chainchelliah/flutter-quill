@@ -20,10 +20,13 @@ import 'delegate.dart';
 import 'editor.dart';
 import 'text_block.dart';
 import 'text_line.dart';
+import 'video_app.dart';
+import 'youtube_video_app.dart';
 
 class QuillSimpleViewer extends StatefulWidget {
   const QuillSimpleViewer({
     required this.controller,
+    required this.readOnly,
     this.customStyles,
     this.truncate = false,
     this.truncateScale,
@@ -51,6 +54,7 @@ class QuillSimpleViewer extends StatefulWidget {
   final double scrollBottomInset;
   final EdgeInsetsGeometry padding;
   final EmbedBuilder? embedBuilder;
+  final bool readOnly;
 
   @override
   _QuillSimpleViewerState createState() => _QuillSimpleViewerState();
@@ -86,9 +90,7 @@ class _QuillSimpleViewerState extends State<QuillSimpleViewer>
     super.didChangeDependencies();
     final parentStyles = QuillStyles.getStyles(context, true);
     final defaultStyles = DefaultStyles.getInstance(context);
-    _styles = (parentStyles != null)
-        ? defaultStyles.merge(parentStyles)
-        : defaultStyles;
+    _styles = (parentStyles != null) ? defaultStyles.merge(parentStyles) : defaultStyles;
 
     if (widget.customStyles != null) {
       _styles = _styles.merge(widget.customStyles!);
@@ -97,7 +99,7 @@ class _QuillSimpleViewerState extends State<QuillSimpleViewer>
 
   EmbedBuilder get embedBuilder => widget.embedBuilder ?? _defaultEmbedBuilder;
 
-  Widget _defaultEmbedBuilder(BuildContext context, leaf.Embed node) {
+  Widget _defaultEmbedBuilder(BuildContext context, leaf.Embed node, bool readOnly) {
     assert(!kIsWeb, 'Please provide EmbedBuilder for Web');
     switch (node.value.type) {
       case 'image':
@@ -107,6 +109,12 @@ class _QuillSimpleViewerState extends State<QuillSimpleViewer>
             : isBase64(imageUrl)
                 ? Image.memory(base64.decode(imageUrl))
                 : Image.file(io.File(imageUrl));
+      case 'video':
+        final videoUrl = node.value.data;
+        if (videoUrl.contains('youtube.com') || videoUrl.contains('youtu.be')) {
+          return YoutubeVideoApp(videoUrl: videoUrl, context: context, readOnly: readOnly);
+        }
+        return VideoApp(videoUrl: videoUrl, context: context, readOnly: readOnly);
       default:
         throw UnimplementedError(
           'Embeddable type "${node.value.type}" is not supported by default '
@@ -189,25 +197,21 @@ class _QuillSimpleViewerState extends State<QuillSimpleViewer>
       } else if (node is Block) {
         final attrs = node.style.attributes;
         final editableTextBlock = EditableTextBlock(
-            node,
-            _textDirection,
-            widget.scrollBottomInset,
-            _getVerticalSpacingForBlock(node, _styles),
-            widget.controller.selection,
-            Colors.black,
-            // selectionColor,
-            _styles,
-            false,
-            // enableInteractiveSelection,
-            false,
-            // hasFocus,
-            attrs.containsKey(Attribute.codeBlock.key)
-                ? const EdgeInsets.all(16)
-                : null,
-            embedBuilder,
-            _cursorCont,
-            indentLevelCounts,
-            _handleCheckboxTap);
+            block: node,
+            textDirection: _textDirection,
+            scrollBottomInset: widget.scrollBottomInset,
+            verticalSpacing: _getVerticalSpacingForBlock(node, _styles),
+            textSelection: widget.controller.selection,
+            color: Colors.black,
+            styles: _styles,
+            enableInteractiveSelection: false,
+            hasFocus: false,
+            contentPadding: attrs.containsKey(Attribute.codeBlock.key) ? const EdgeInsets.all(16) : null,
+            embedBuilder: embedBuilder,
+            cursorCont: _cursorCont,
+            indentLevelCounts: indentLevelCounts,
+            onCheckboxTap: _handleCheckboxTap,
+            readOnly: widget.readOnly);
         result.add(editableTextBlock);
       } else {
         throw StateError('Unreachable.');
@@ -234,6 +238,7 @@ class _QuillSimpleViewerState extends State<QuillSimpleViewer>
       textDirection: _textDirection,
       embedBuilder: embedBuilder,
       styles: _styles,
+      readOnly: widget.readOnly,
     );
     final editableTextLine = EditableTextLine(
         node,
@@ -283,8 +288,12 @@ class _QuillSimpleViewerState extends State<QuillSimpleViewer>
       return defaultStyles!.code!.verticalSpacing;
     } else if (attrs.containsKey(Attribute.indent.key)) {
       return defaultStyles!.indent!.verticalSpacing;
+    } else if (attrs.containsKey(Attribute.list.key)) {
+      return defaultStyles!.lists!.verticalSpacing;
+    } else if (attrs.containsKey(Attribute.align.key)) {
+      return defaultStyles!.align!.verticalSpacing;
     }
-    return defaultStyles!.lists!.verticalSpacing;
+    return const Tuple2(0, 0);
   }
 
   void _nullSelectionChanged(

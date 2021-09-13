@@ -1,11 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:filesystem_picker/filesystem_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' hide Text;
+import 'package:path_provider/path_provider.dart';
 
-typedef DemoContentBuilder = Widget Function(
-    BuildContext context, QuillController? controller);
+typedef DemoContentBuilder = Widget Function(BuildContext context, QuillController? controller);
 
 // Common scaffold for all examples.
 class DemoScaffold extends StatefulWidget {
@@ -63,16 +66,28 @@ class _DemoScaffoldState extends State<DemoScaffold> {
     } catch (error) {
       final doc = Document()..insert(0, 'Empty asset');
       setState(() {
-        _controller = QuillController(
-            document: doc, selection: const TextSelection.collapsed(offset: 0));
+        _controller = QuillController(document: doc, selection: const TextSelection.collapsed(offset: 0));
         _loading = false;
       });
     }
   }
 
+  Future<String?> openFileSystemPickerForDesktop(BuildContext context) async {
+    return await FilesystemPicker.open(
+      context: context,
+      rootDirectory: await getApplicationDocumentsDirectory(),
+      fsType: FilesystemType.file,
+      fileTileSelectMode: FileTileSelectMode.wholeTile,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final actions = widget.actions ?? <Widget>[];
+    var toolbar = QuillToolbar.basic(controller: _controller!);
+    if (_isDesktop()) {
+      toolbar = QuillToolbar.basic(controller: _controller!, filePickImpl: openFileSystemPickerForDesktop);
+    }
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
@@ -88,15 +103,13 @@ class _DemoScaffoldState extends State<DemoScaffold> {
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: _loading || widget.showToolbar == false
-            ? null
-            : QuillToolbar.basic(controller: _controller!),
+        title: _loading || !widget.showToolbar ? null : toolbar,
         actions: actions,
       ),
       floatingActionButton: widget.floatingActionButton,
-      body: _loading
-          ? const Center(child: Text('Loading...'))
-          : widget.builder(context, _controller),
+      body: _loading ? const Center(child: Text('Loading...')) : widget.builder(context, _controller),
     );
   }
+
+  bool _isDesktop() => !kIsWeb && !Platform.isAndroid && !Platform.isIOS;
 }

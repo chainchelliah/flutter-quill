@@ -38,5 +38,10 @@ class BlockEmbed extends Embeddable {
   static BlockEmbed horizontalRule = const BlockEmbed(horizontalRuleType, 'hr');
 
   static const String imageType = 'image';
+
   static BlockEmbed image(String imageUrl) => BlockEmbed(imageType, imageUrl);
+
+  static const String videoType = 'video';
+
+  static BlockEmbed video(String videoUrl) => BlockEmbed(videoType, videoUrl);
 }

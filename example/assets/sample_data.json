@@ -1,40 +1,50 @@
 [
-   {
-      "insert":"Flutter Quill"
-   },
-   {
-      "attributes":{
-         "header":1
-      },
-      "insert":"\n"
-   },
-   {
-      "insert": {
-         "image": "https://user-images.githubusercontent.com/122956/72955931-ccc07900-3d52-11ea-89b1-d468a6e2aa2b.png"
-      },
-      "attributes":{
-         "width":"230",
-         "style":"display: block; margin: auto;"
-      }
-   },
-   {
-      "insert":"\nRich text editor for Flutter"
-   },
-   {
-      "attributes":{
-         "header":2
-      },
-      "insert":"\n"
-   },
-   {
-      "insert":"Quill component for Flutter"
-   },
-   {
-      "attributes":{
-         "header":3
-      },
-      "insert":"\n"
-   },
+  {
+    "insert": {
+      "image": "https://user-images.githubusercontent.com/122956/72955931-ccc07900-3d52-11ea-89b1-d468a6e2aa2b.png"
+    },
+    "attributes": {
+      "width": "230",
+      "style": "display: block; margin: auto; mobileWidth: 50; mobileHeight: 50; mobileMargin: 10; mobileAlignment: topLeft"
+    }
+  },
+  {
+    "insert": "Flutter Quill"
+  },
+  {
+    "attributes": {
+      "header": 1
+    },
+    "insert": "\n"
+  },
+  {
+    "insert": {
+      "video": "https://www.youtube.com/watch?v=V4hgdKhIqtc&list=PLbhaS_83B97s78HsDTtplRTEhcFsqSqIK&index=1"
+    }
+  },
+  {
+    "insert": {
+      "video": "https://user-images.githubusercontent.com/122956/126238875-22e42501-ad41-4266-b1d6-3f89b5e3b79b.mp4"
+    }
+  },
+  {
+    "insert": "\nRich text editor for Flutter"
+  },
+  {
+    "attributes": {
+      "header": 2
+    },
+    "insert": "\n"
+  },
+  {
+    "insert": "Quill component for Flutter"
+  },
+  {
+    "attributes": {
+      "header": 3
+    },
+    "insert": "\n"
+  },
    {
       "insert":"This "
    },
@@ -499,23 +509,32 @@
    },
    {
       "attributes":{
-         "token":"built_in"
+        "token": "built_in"
       },
-      "insert":" diff"
+     "insert": " diff"
    },
-   {
-      "attributes":{
-         "token":"operator"
-      },
-      "insert":"-match"
-   },
-   {
-      "attributes":{
-         "token":"literal"
-      },
-      "insert":"-patch"
-   },
-   {
-      "insert": "\n"
-   }
+  {
+    "attributes": {
+      "token": "operator"
+    },
+    "insert": "-match"
+  },
+  {
+    "attributes": {
+      "token": "literal"
+    },
+    "insert": "-patch"
+  },
+  {
+    "insert": {
+      "image": "https://user-images.githubusercontent.com/122956/72955931-ccc07900-3d52-11ea-89b1-d468a6e2aa2b.png"
+    },
+    "attributes": {
+      "width": "230",
+      "style": "display: block; margin: auto;"
+    }
+  },
+  {
+    "insert": "\n"
+  }
 ]
