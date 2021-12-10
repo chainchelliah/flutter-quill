@@ -23,6 +23,7 @@ import 'controller.dart';
 import 'cursor.dart';
 import 'default_styles.dart';
 import 'delegate.dart';
+import 'float_cursor.dart';
 import 'image.dart';
 import 'raw_editor.dart';
 import 'text_selection.dart';
@@ -51,17 +52,23 @@ abstract class EditorState extends State<RawEditor> {
 
   TextEditingValue getTextEditingValue();
 
-  void setTextEditingValue(TextEditingValue value);
+  void setTextEditingValue(TextEditingValue value, SelectionChangedCause cause);
 
   RenderEditor? getRenderEditor();
 
   EditorTextSelectionOverlay? getSelectionOverlay();
+
+  /// Controls the floating cursor animation when it is released.
+  /// The floating cursor is animated to merge with the regular cursor.
+  AnimationController get floatingCursorResetController;
 
   bool showToolbar();
 
   void hideToolbar();
 
   void requestKeyboard();
+
+  bool get readOnly;
 }
 
 /// Base interface for editable render objects.
@@ -87,7 +94,21 @@ abstract class RenderAbstractEditor {
   /// selection that contains some text but whose ends meet in the middle).
   TextPosition getPositionForOffset(Offset offset);
 
+  /// Returns the local coordinates of the endpoints of the given selection.
+  ///
+  /// If the selection is collapsed (and therefore occupies a single point), the
+  /// returned list is of length one. Otherwise, the selection is not collapsed
+  /// and the returned list is of length two. In this case, however, the two
+  /// points might actually be co-located (e.g., because of a bidirectional
+  /// selection that contains some text but whose ends meet in the middle).
   List<TextSelectionPoint> getEndpointsForSelection(TextSelection textSelection);
+
+  /// Sets the screen position of the floating cursor and the text position
+  /// closest to the cursor.
+  /// `resetLerpValue` drives the size of the floating cursor.
+  /// See [EditorState.floatingCursorResetController].
+  void setFloatingCursor(FloatingCursorDragState dragState, Offset lastBoundedOffset, TextPosition lastTextPosition,
+      {double? resetLerpValue});
 
   /// If [ignorePointer] is false (the default) then this method is called by
   /// the internal gesture recognizer's [TapGestureRecognizer.onTapDown]
@@ -144,7 +165,7 @@ String _standardizeImageUrl(String url) {
 
 bool _isMobile() => io.Platform.isAndroid || io.Platform.isIOS;
 
-Widget _defaultEmbedBuilder(BuildContext context, leaf.Embed node, bool readOnly) {
+Widget defaultEmbedBuilder(BuildContext context, leaf.Embed node, bool readOnly) {
   assert(!kIsWeb, 'Please provide EmbedBuilder for Web');
   switch (node.value.type) {
     case 'image':
@@ -160,33 +181,7 @@ Widget _defaultEmbedBuilder(BuildContext context, leaf.Embed node, bool readOnly
           final w = double.parse(_attrs['mobileWidth']!);
           final h = double.parse(_attrs['mobileHeight']!);
           final m = _attrs['mobileMargin'] == null ? 0.0 : double.parse(_attrs['mobileMargin']!);
-          var a = Alignment.center;
-          if (_attrs['mobileAlignment'] != null) {
-            final _index = [
-              'topLeft',
-              'topCenter',
-              'topRight',
-              'centerLeft',
-              'center',
-              'centerRight',
-              'bottomLeft',
-              'bottomCenter',
-              'bottomRight'
-            ].indexOf(_attrs['mobileAlignment']!);
-            if (_index >= 0) {
-              a = [
-                Alignment.topLeft,
-                Alignment.topCenter,
-                Alignment.topRight,
-                Alignment.centerLeft,
-                Alignment.center,
-                Alignment.centerRight,
-                Alignment.bottomLeft,
-                Alignment.bottomCenter,
-                Alignment.bottomRight
-              ][_index];
-            }
-          }
+          final a = getAlignment(_attrs['mobileAlignment']);
           return Padding(
               padding: EdgeInsets.all(m),
               child: imageUrl.startsWith('http')
@@ -243,23 +238,26 @@ class QuillEditor extends StatefulWidget {
       this.onSingleLongTapStart,
       this.onSingleLongTapMoveUpdate,
       this.onSingleLongTapEnd,
-      this.embedBuilder = _defaultEmbedBuilder,
+      this.embedBuilder = defaultEmbedBuilder,
       this.customStyleBuilder,
       Key? key});
 
   factory QuillEditor.basic({
     required QuillController controller,
     required bool readOnly,
+    Brightness? keyboardAppearance,
   }) {
     return QuillEditor(
-        controller: controller,
-        scrollController: ScrollController(),
-        scrollable: true,
-        focusNode: FocusNode(),
-        autoFocus: true,
-        readOnly: readOnly,
-        expands: false,
-        padding: EdgeInsets.zero);
+      controller: controller,
+      scrollController: ScrollController(),
+      scrollable: true,
+      focusNode: FocusNode(),
+      autoFocus: true,
+      readOnly: readOnly,
+      expands: false,
+      padding: EdgeInsets.zero,
+      keyboardAppearance: keyboardAppearance ?? Brightness.light,
+    );
   }
 
   final QuillController controller;
@@ -282,9 +280,9 @@ class QuillEditor extends StatefulWidget {
   final Brightness keyboardAppearance;
   final ScrollPhysics? scrollPhysics;
   final ValueChanged<String>? onLaunchUrl;
+
   // Returns whether gesture is handled
-  final bool Function(
-      TapDownDetails details, TextPosition Function(Offset offset))? onTapDown;
+  final bool Function(TapDownDetails details, TextPosition Function(Offset offset))? onTapDown;
 
   // Returns whether gesture is handled
   final bool Function(TapUpDetails details, TextPosition Function(Offset offset))? onTapUp;
@@ -352,60 +350,60 @@ class _QuillEditorState extends State<QuillEditor>
         cursorOpacityAnimates = true;
         cursorColor ??=
             selectionTheme.cursorColor ?? cupertinoTheme.primaryColor;
-        selectionColor = selectionTheme.selectionColor ??
-            cupertinoTheme.primaryColor.withOpacity(0.40);
+        selectionColor = selectionTheme.selectionColor ?? cupertinoTheme.primaryColor.withOpacity(0.40);
         cursorRadius ??= const Radius.circular(2);
-        cursorOffset = Offset(
-            iOSHorizontalOffset / MediaQuery.of(context).devicePixelRatio, 0);
+        cursorOffset = Offset(iOSHorizontalOffset / MediaQuery.of(context).devicePixelRatio, 0);
         break;
       default:
         throw UnimplementedError();
     }
 
+    final child = RawEditor(
+      key: _editorKey,
+      controller: widget.controller,
+      focusNode: widget.focusNode,
+      scrollController: widget.scrollController,
+      scrollable: widget.scrollable,
+      scrollBottomInset: widget.scrollBottomInset,
+      padding: widget.padding,
+      readOnly: widget.readOnly,
+      placeholder: widget.placeholder,
+      onLaunchUrl: widget.onLaunchUrl,
+      toolbarOptions: ToolbarOptions(
+        copy: widget.enableInteractiveSelection,
+        cut: widget.enableInteractiveSelection,
+        paste: widget.enableInteractiveSelection,
+        selectAll: widget.enableInteractiveSelection,
+      ),
+      showSelectionHandles: theme.platform == TargetPlatform.iOS || theme.platform == TargetPlatform.android,
+      showCursor: widget.showCursor,
+      cursorStyle: CursorStyle(
+        color: cursorColor,
+        backgroundColor: Colors.grey,
+        width: 2,
+        radius: cursorRadius,
+        offset: cursorOffset,
+        paintAboveText: widget.paintCursorAboveText ?? paintCursorAboveText,
+        opacityAnimates: cursorOpacityAnimates,
+      ),
+      textCapitalization: widget.textCapitalization,
+      minHeight: widget.minHeight,
+      maxHeight: widget.maxHeight,
+      customStyles: widget.customStyles,
+      expands: widget.expands,
+      autoFocus: widget.autoFocus,
+      selectionColor: selectionColor,
+      selectionCtrls: textSelectionControls,
+      keyboardAppearance: widget.keyboardAppearance,
+      enableInteractiveSelection: widget.enableInteractiveSelection,
+      scrollPhysics: widget.scrollPhysics,
+      embedBuilder: widget.embedBuilder,
+      customStyleBuilder: widget.customStyleBuilder,
+    );
+
     return _selectionGestureDetectorBuilder.build(
       HitTestBehavior.translucent,
-      RawEditor(
-        _editorKey,
-        widget.controller,
-        widget.focusNode,
-        widget.scrollController,
-        widget.scrollable,
-        widget.scrollBottomInset,
-        widget.padding,
-        widget.readOnly,
-        widget.placeholder,
-        widget.onLaunchUrl,
-        ToolbarOptions(
-          copy: widget.enableInteractiveSelection,
-          cut: widget.enableInteractiveSelection,
-          paste: widget.enableInteractiveSelection,
-          selectAll: widget.enableInteractiveSelection,
-        ),
-        theme.platform == TargetPlatform.iOS || theme.platform == TargetPlatform.android,
-        widget.showCursor,
-        CursorStyle(
-          color: cursorColor,
-          backgroundColor: Colors.grey,
-          width: 2,
-          radius: cursorRadius,
-          offset: cursorOffset,
-          paintAboveText: widget.paintCursorAboveText ?? paintCursorAboveText,
-          opacityAnimates: cursorOpacityAnimates,
-        ),
-        widget.textCapitalization,
-        widget.maxHeight,
-        widget.minHeight,
-        widget.customStyles,
-        widget.expands,
-        widget.autoFocus,
-        selectionColor,
-        textSelectionControls,
-        widget.keyboardAppearance,
-        widget.enableInteractiveSelection,
-        widget.scrollPhysics,
-        widget.embedBuilder,
-        widget.customStyleBuilder,
-      ),
+      child,
     );
   }
 
@@ -643,8 +641,7 @@ class _QuillEditorSelectionGestureDetectorBuilder
     if (_state.widget.onSingleLongTapEnd != null) {
       final renderEditor = getRenderEditor();
       if (renderEditor != null) {
-        if (_state.widget.onSingleLongTapEnd!(
-            details, renderEditor.getPositionForOffset)) {
+        if (_state.widget.onSingleLongTapEnd!(details, renderEditor.getPositionForOffset)) {
           return;
         }
       }
@@ -653,24 +650,36 @@ class _QuillEditorSelectionGestureDetectorBuilder
   }
 }
 
-typedef TextSelectionChangedHandler = void Function(
-    TextSelection selection, SelectionChangedCause cause);
+/// Signature for the callback that reports when the user changes the selection
+/// (including the cursor location).
+///
+/// Used by [RenderEditor.onSelectionChanged].
+typedef TextSelectionChangedHandler = void Function(TextSelection selection, SelectionChangedCause cause);
 
-class RenderEditor extends RenderEditableContainerBox
-    implements RenderAbstractEditor {
+// The padding applied to text field. Used to determine the bounds when
+// moving the floating cursor.
+const EdgeInsets _kFloatingCursorAddedMargin = EdgeInsets.fromLTRB(4, 4, 4, 5);
+
+// The additional size on the x and y axis with which to expand the prototype
+// cursor to render the floating cursor in pixels.
+const EdgeInsets _kFloatingCaretSizeIncrease = EdgeInsets.symmetric(horizontal: 0.5, vertical: 1);
+
+class RenderEditor extends RenderEditableContainerBox implements RenderAbstractEditor {
   RenderEditor(
-    List<RenderEditableBox>? children,
-    TextDirection textDirection,
-    double scrollBottomInset,
-    EdgeInsetsGeometry padding,
-    this.document,
-    this.selection,
-    this._hasFocus,
-    this.onSelectionChanged,
-    this._startHandleLayerLink,
-    this._endHandleLayerLink,
-    EdgeInsets floatingCursorAddedMargin,
-  ) : super(
+      ViewportOffset? offset,
+      List<RenderEditableBox>? children,
+      TextDirection textDirection,
+      double scrollBottomInset,
+      EdgeInsetsGeometry padding,
+      this.document,
+      this.selection,
+      this._hasFocus,
+      this.onSelectionChanged,
+      this._startHandleLayerLink,
+      this._endHandleLayerLink,
+      EdgeInsets floatingCursorAddedMargin,
+      this._cursorController)
+      : super(
           children,
           document.root,
           textDirection,
@@ -678,20 +687,49 @@ class RenderEditor extends RenderEditableContainerBox
           padding,
         );
 
+  final CursorCont _cursorController;
+
   Document document;
   TextSelection selection;
   bool _hasFocus = false;
   LayerLink _startHandleLayerLink;
   LayerLink _endHandleLayerLink;
   TextSelectionChangedHandler onSelectionChanged;
-  final ValueNotifier<bool> _selectionStartInViewport =
-      ValueNotifier<bool>(true);
+  final ValueNotifier<bool> _selectionStartInViewport = ValueNotifier<bool>(true);
 
-  ValueListenable<bool> get selectionStartInViewport =>
-      _selectionStartInViewport;
+  ValueListenable<bool> get selectionStartInViewport => _selectionStartInViewport;
 
   ValueListenable<bool> get selectionEndInViewport => _selectionEndInViewport;
   final ValueNotifier<bool> _selectionEndInViewport = ValueNotifier<bool>(true);
+
+  void _updateSelectionExtentsVisibility(Offset effectiveOffset) {
+    final visibleRegion = Offset.zero & size;
+    final startPosition = TextPosition(offset: selection.start, affinity: selection.affinity);
+    final startOffset = _getOffsetForCaret(startPosition);
+    // TODO(justinmc): https://github.com/flutter/flutter/issues/31495
+    // Check if the selection is visible with an approximation because a
+    // difference between rounded and unrounded values causes the caret to be
+    // reported as having a slightly (< 0.5) negative y offset. This rounding
+    // happens in paragraph.cc's layout and TextPainer's
+    // _applyFloatingPointHack. Ideally, the rounding mismatch will be fixed and
+    // this can be changed to be a strict check instead of an approximation.
+    const visibleRegionSlop = 0.5;
+    _selectionStartInViewport.value = visibleRegion.inflate(visibleRegionSlop).contains(startOffset + effectiveOffset);
+
+    final endPosition = TextPosition(offset: selection.end, affinity: selection.affinity);
+    final endOffset = _getOffsetForCaret(endPosition);
+    _selectionEndInViewport.value = visibleRegion.inflate(visibleRegionSlop).contains(endOffset + effectiveOffset);
+  }
+
+  // returns offset relative to this at which the caret will be painted
+  // given a global TextPosition
+  Offset _getOffsetForCaret(TextPosition position) {
+    final child = childAtPosition(position);
+    final childPosition = child.globalToLocalPosition(position);
+    final boxParentData = child.parentData as BoxParentData;
+    final localOffsetForCaret = child.getOffsetForCaret(childPosition);
+    return boxParentData.offset + localOffsetForCaret;
+  }
 
   void setDocument(Document doc) {
     if (document == doc) {
@@ -707,6 +745,19 @@ class RenderEditor extends RenderEditableContainerBox
     }
     _hasFocus = h;
     markNeedsSemanticsUpdate();
+  }
+
+  Offset get _paintOffset => Offset(0, -(offset?.pixels ?? 0.0));
+
+  ViewportOffset? get offset => _offset;
+  ViewportOffset? _offset;
+
+  set offset(ViewportOffset? value) {
+    if (_offset == value) return;
+    if (attached) _offset?.removeListener(markNeedsPaint);
+    _offset = value;
+    if (attached) _offset?.addListener(markNeedsPaint);
+    markNeedsLayout();
   }
 
   void setSelection(TextSelection t) {
@@ -941,8 +992,16 @@ class RenderEditor extends RenderEditableContainerBox
 
   @override
   void paint(PaintingContext context, Offset offset) {
+    if (_hasFocus && _cursorController.show.value && !_cursorController.style.paintAboveText) {
+      _paintFloatingCursor(context, offset);
+    }
     defaultPaint(context, offset);
+    _updateSelectionExtentsVisibility(offset + _paintOffset);
     _paintHandleLayers(context, getEndpointsForSelection(selection));
+
+    if (_hasFocus && _cursorController.show.value && _cursorController.style.paintAboveText) {
+      _paintFloatingCursor(context, offset);
+    }
   }
 
   @override
@@ -1049,6 +1108,115 @@ class RenderEditor extends RenderEditableContainerBox
     final boxParentData = targetChild.parentData as BoxParentData;
     return childLocalRect.shift(Offset(0, boxParentData.offset.dy));
   }
+
+  // Start floating cursor
+
+  FloatingCursorPainter get _floatingCursorPainter => FloatingCursorPainter(
+        floatingCursorRect: _floatingCursorRect,
+        style: _cursorController.style,
+      );
+
+  bool _floatingCursorOn = false;
+  Rect? _floatingCursorRect;
+
+  TextPosition get floatingCursorTextPosition => _floatingCursorTextPosition;
+  late TextPosition _floatingCursorTextPosition;
+
+  // The relative origin in relation to the distance the user has theoretically
+  // dragged the floating cursor offscreen.
+  // This value is used to account for the difference
+  // in the rendering position and the raw offset value.
+  Offset _relativeOrigin = Offset.zero;
+  Offset? _previousOffset;
+  bool _resetOriginOnLeft = false;
+  bool _resetOriginOnRight = false;
+  bool _resetOriginOnTop = false;
+  bool _resetOriginOnBottom = false;
+
+  /// Returns the position within the editor closest to the raw cursor offset.
+  Offset calculateBoundedFloatingCursorOffset(Offset rawCursorOffset, double preferredLineHeight) {
+    var deltaPosition = Offset.zero;
+    final topBound = _kFloatingCursorAddedMargin.top;
+    final bottomBound = size.height - preferredLineHeight + _kFloatingCursorAddedMargin.bottom;
+    final leftBound = _kFloatingCursorAddedMargin.left;
+    final rightBound = size.width - _kFloatingCursorAddedMargin.right;
+
+    if (_previousOffset != null) {
+      deltaPosition = rawCursorOffset - _previousOffset!;
+    }
+
+    // If the raw cursor offset has gone off an edge,
+    // we want to reset the relative origin of
+    // the dragging when the user drags back into the field.
+    if (_resetOriginOnLeft && deltaPosition.dx > 0) {
+      _relativeOrigin = Offset(rawCursorOffset.dx - leftBound, _relativeOrigin.dy);
+      _resetOriginOnLeft = false;
+    } else if (_resetOriginOnRight && deltaPosition.dx < 0) {
+      _relativeOrigin = Offset(rawCursorOffset.dx - rightBound, _relativeOrigin.dy);
+      _resetOriginOnRight = false;
+    }
+    if (_resetOriginOnTop && deltaPosition.dy > 0) {
+      _relativeOrigin = Offset(_relativeOrigin.dx, rawCursorOffset.dy - topBound);
+      _resetOriginOnTop = false;
+    } else if (_resetOriginOnBottom && deltaPosition.dy < 0) {
+      _relativeOrigin = Offset(_relativeOrigin.dx, rawCursorOffset.dy - bottomBound);
+      _resetOriginOnBottom = false;
+    }
+
+    final currentX = rawCursorOffset.dx - _relativeOrigin.dx;
+    final currentY = rawCursorOffset.dy - _relativeOrigin.dy;
+    final double adjustedX = math.min(math.max(currentX, leftBound), rightBound);
+    final double adjustedY = math.min(math.max(currentY, topBound), bottomBound);
+    final adjustedOffset = Offset(adjustedX, adjustedY);
+
+    if (currentX < leftBound && deltaPosition.dx < 0) {
+      _resetOriginOnLeft = true;
+    } else if (currentX > rightBound && deltaPosition.dx > 0) {
+      _resetOriginOnRight = true;
+    }
+    if (currentY < topBound && deltaPosition.dy < 0) {
+      _resetOriginOnTop = true;
+    } else if (currentY > bottomBound && deltaPosition.dy > 0) {
+      _resetOriginOnBottom = true;
+    }
+
+    _previousOffset = rawCursorOffset;
+
+    return adjustedOffset;
+  }
+
+  @override
+  void setFloatingCursor(FloatingCursorDragState dragState, Offset boundedOffset, TextPosition textPosition,
+      {double? resetLerpValue}) {
+    if (dragState == FloatingCursorDragState.Start) {
+      _relativeOrigin = Offset.zero;
+      _previousOffset = null;
+      _resetOriginOnBottom = false;
+      _resetOriginOnTop = false;
+      _resetOriginOnRight = false;
+      _resetOriginOnBottom = false;
+    }
+    _floatingCursorOn = dragState != FloatingCursorDragState.End;
+    if (_floatingCursorOn) {
+      _floatingCursorTextPosition = textPosition;
+      final sizeAdjustment = resetLerpValue != null
+          ? EdgeInsets.lerp(_kFloatingCaretSizeIncrease, EdgeInsets.zero, resetLerpValue)!
+          : _kFloatingCaretSizeIncrease;
+      final child = childAtPosition(textPosition);
+      final caretPrototype = child.getCaretPrototype(child.globalToLocalPosition(textPosition));
+      _floatingCursorRect = sizeAdjustment.inflateRect(caretPrototype).shift(boundedOffset);
+      _cursorController.setFloatingCursorTextPosition(_floatingCursorTextPosition);
+    } else {
+      _floatingCursorRect = null;
+      _cursorController.setFloatingCursorTextPosition(null);
+    }
+  }
+
+  void _paintFloatingCursor(PaintingContext context, Offset offset) {
+    _floatingCursorPainter.paint(context.canvas);
+  }
+
+// End floating cursor
 }
 
 class EditableContainerParentData
@@ -1121,7 +1289,11 @@ class RenderEditableContainerBox extends RenderBox
       if (targetChild.getContainer() == targetNode) {
         break;
       }
-      targetChild = childAfter(targetChild);
+      final newChild = childAfter(targetChild);
+      if (newChild == null) {
+        break;
+      }
+      targetChild = newChild;
     }
     if (targetChild == null) {
       throw 'targetChild should not be null';

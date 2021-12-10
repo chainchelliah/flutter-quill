@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import 'package:tuple/tuple.dart';
+
+import 'style_widgets/style_widgets.dart';
 
 class QuillStyles extends InheritedWidget {
   const QuillStyles({
@@ -43,6 +44,18 @@ class DefaultTextBlockStyle {
   final BoxDecoration? decoration;
 }
 
+class DefaultListBlockStyle extends DefaultTextBlockStyle {
+  DefaultListBlockStyle(
+    TextStyle style,
+    Tuple2<double, double> verticalSpacing,
+    Tuple2<double, double> lineSpacing,
+    BoxDecoration? decoration,
+    this.checkboxUIBuilder,
+  ) : super(style, verticalSpacing, lineSpacing, decoration);
+
+  final QuillCheckboxBuilder? checkboxUIBuilder;
+}
+
 class DefaultStyles {
   DefaultStyles({
     this.h1,
@@ -54,6 +67,7 @@ class DefaultStyles {
     this.small,
     this.underline,
     this.strikeThrough,
+    this.inlineCode,
     this.link,
     this.color,
     this.placeHolder,
@@ -77,13 +91,14 @@ class DefaultStyles {
   final TextStyle? small;
   final TextStyle? underline;
   final TextStyle? strikeThrough;
+  final TextStyle? inlineCode;
   final TextStyle? sizeSmall; // 'small'
   final TextStyle? sizeLarge; // 'large'
   final TextStyle? sizeHuge; // 'huge'
   final TextStyle? link;
   final Color? color;
   final DefaultTextBlockStyle? placeHolder;
-  final DefaultTextBlockStyle? lists;
+  final DefaultListBlockStyle? lists;
   final DefaultTextBlockStyle? quote;
   final DefaultTextBlockStyle? code;
   final DefaultTextBlockStyle? indent;
@@ -151,6 +166,11 @@ class DefaultStyles {
         small: const TextStyle(fontSize: 12, color: Colors.black45),
         underline: const TextStyle(decoration: TextDecoration.underline),
         strikeThrough: const TextStyle(decoration: TextDecoration.lineThrough),
+        inlineCode: TextStyle(
+          color: Colors.blue.shade900.withOpacity(0.9),
+          fontFamily: fontFamily,
+          fontSize: 13,
+        ),
         link: TextStyle(
           color: themeData.colorScheme.secondary,
           decoration: TextDecoration.underline,
@@ -164,8 +184,7 @@ class DefaultStyles {
             const Tuple2(0, 0),
             const Tuple2(0, 0),
             null),
-        lists: DefaultTextBlockStyle(
-            baseStyle, baseSpacing, const Tuple2(0, 6), null),
+        lists: DefaultListBlockStyle(baseStyle, baseSpacing, const Tuple2(0, 6), null, null),
         quote: DefaultTextBlockStyle(
             TextStyle(color: baseStyle.color!.withOpacity(0.6)),
             baseSpacing,
@@ -210,6 +229,7 @@ class DefaultStyles {
         small: other.small ?? small,
         underline: other.underline ?? underline,
         strikeThrough: other.strikeThrough ?? strikeThrough,
+        inlineCode: other.inlineCode ?? inlineCode,
         link: other.link ?? link,
         color: other.color ?? color,
         placeHolder: other.placeHolder ?? placeHolder,

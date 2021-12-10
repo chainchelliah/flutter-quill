@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../models/documents/nodes/node.dart';
@@ -396,6 +394,10 @@ class _TextSelectionHandleOverlayState
         break;
     }
 
+    if (newSelection.baseOffset >= newSelection.extentOffset) {
+      return; // don't allow order swapping.
+    }
+
     widget.onSelectionHandleChanged(newSelection);
   }
 
@@ -713,8 +715,8 @@ class _EditorTextSelectionGestureDetectorState
         widget.onSingleLongTapEnd != null) {
       gestures[LongPressGestureRecognizer] =
           GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
-        () => LongPressGestureRecognizer(
-            debugOwner: this, kind: PointerDeviceKind.touch),
+                () => LongPressGestureRecognizer(
+            debugOwner: this, supportedDevices: <PointerDeviceKind>{PointerDeviceKind.touch}),
         (instance) {
           instance
             ..onLongPressStart = _handleLongPressStart
@@ -729,8 +731,8 @@ class _EditorTextSelectionGestureDetectorState
         widget.onDragSelectionEnd != null) {
       gestures[HorizontalDragGestureRecognizer] =
           GestureRecognizerFactoryWithHandlers<HorizontalDragGestureRecognizer>(
-        () => HorizontalDragGestureRecognizer(
-            debugOwner: this, kind: PointerDeviceKind.mouse),
+                () => HorizontalDragGestureRecognizer(
+            debugOwner: this, supportedDevices: <PointerDeviceKind>{PointerDeviceKind.mouse}),
         (instance) {
           instance
             ..dragStartBehavior = DragStartBehavior.down

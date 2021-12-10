@@ -131,8 +131,18 @@ class CursorCont extends ChangeNotifier {
   Timer? _cursorTimer;
   bool _targetCursorVisibility = false;
 
+  final ValueNotifier<TextPosition?> _floatingCursorTextPosition = ValueNotifier(null);
+
+  ValueNotifier<TextPosition?> get floatingCursorTextPosition => _floatingCursorTextPosition;
+
+  void setFloatingCursorTextPosition(TextPosition? position) => _floatingCursorTextPosition.value = position;
+
+  bool get isFloatingCursorActive => floatingCursorTextPosition.value != null;
+
   CursorStyle _style;
+
   CursorStyle get style => _style;
+
   set style(CursorStyle value) {
     if (_style == value) return;
     _style = value;
@@ -228,13 +238,13 @@ class CursorCont extends ChangeNotifier {
 
 /// Paints the editing cursor.
 class CursorPainter {
-  CursorPainter(
-    this.editable,
-    this.style,
-    this.prototype,
-    this.color,
-    this.devicePixelRatio,
-  );
+  CursorPainter({
+    required this.editable,
+    required this.style,
+    required this.prototype,
+    required this.color,
+    required this.devicePixelRatio,
+  });
 
   final RenderContentProxyBox? editable;
   final CursorStyle style;

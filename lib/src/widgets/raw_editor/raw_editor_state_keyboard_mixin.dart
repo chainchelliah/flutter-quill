@@ -71,8 +71,19 @@ mixin RawEditorStateKeyboardMixin on EditorState {
     final plainText = getTextEditingValue().text;
     if (shortcut == InputShortcut.COPY) {
       if (!selection.isCollapsed) {
-        await Clipboard.setData(
-            ClipboardData(text: selection.textInside(plainText)));
+        await Clipboard.setData(ClipboardData(text: selection.textInside(plainText)));
+      }
+      return;
+    }
+    if (shortcut == InputShortcut.UNDO) {
+      if (widget.controller.hasUndo) {
+        widget.controller.undo();
+      }
+      return;
+    }
+    if (shortcut == InputShortcut.REDO) {
+      if (widget.controller.hasRedo) {
+        widget.controller.redo();
       }
       return;
     }
@@ -88,11 +99,12 @@ mixin RawEditorStateKeyboardMixin on EditorState {
           TextSelection.collapsed(offset: selection.start),
         );
 
-        setTextEditingValue(TextEditingValue(
-          text:
-              selection.textBefore(plainText) + selection.textAfter(plainText),
-          selection: TextSelection.collapsed(offset: selection.start),
-        ));
+        setTextEditingValue(
+            TextEditingValue(
+              text: selection.textBefore(plainText) + selection.textAfter(plainText),
+              selection: TextSelection.collapsed(offset: selection.start),
+            ),
+            SelectionChangedCause.keyboard);
       }
       return;
     }
@@ -141,12 +153,11 @@ mixin RawEditorStateKeyboardMixin on EditorState {
     final newSelection = TextSelection.collapsed(offset: cursorPosition);
     final newText = textBefore + textAfter;
     final size = plainText.length - newText.length;
-    widget.controller.replaceText(
-      cursorPosition,
-      size,
-      '',
-      newSelection,
-    );
+    if (size == 0) {
+      widget.controller.handleDelete(cursorPosition, forward);
+    } else {
+      widget.controller.replaceText(cursorPosition, size, '', newSelection);
+    }
   }
 
   TextSelection _jumpToBeginOrEndOfWord(
